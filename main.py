@@ -111,6 +111,19 @@ def main():
         devnull.close()
 
 def run_main_logic(args, model, messages, system_prompt, mcptools):
+    """
+    Handles single-shot prompt mode and delegates to chat loop if no prompt is provided.
+
+    Args:
+        args: Parsed command-line arguments (argparse.Namespace).
+        model: Model name for Ollama.
+        messages: List of chat messages (history).
+        system_prompt: System prompt string for the LLM.
+        mcptools: List of MCP tool callables.
+
+    - If --prompt is set, runs a one-off LLM interaction and prints the result.
+    - Otherwise, enters interactive chat mode.
+    """
     if args.prompt is not None:
         user_input = f"""
         Additional Info From User Client:
@@ -121,7 +134,7 @@ def run_main_logic(args, model, messages, system_prompt, mcptools):
         print(f"\033[90m  User ({get_timestamp()}):\033[0m")
         print(args.prompt)
         print()
-        print(f"\033[90m  Assistant ({get_timestamp()}):\033[0m")
+        print(f"\033[90m  {model} ({get_timestamp()}):\033[0m")
         tools_ollama = fn_adapter_mcp2ollama(mcptools)
         messages = stream_llm_with_tools(model=model, user_input=user_input, tools=tools_ollama, system_prompt=system_prompt, messages=messages, mcptools=mcptools)
         if args.history_file:
@@ -142,14 +155,19 @@ def chat(
     system_prompt: str = "You are a helpful AI assistant named Bob, an expert in cryptography."
 ) -> list:
     """
-    AI Chat Event Loop
+    Interactive chat loop for multi-turn conversations with the LLM.
+
     Args:
         model (str): Model name for Ollama.
-        messages (list): List of chat messages.
-        tools (list): List of tool callables.
-        system_prompt (str): System prompt for the LLM.
+        messages (list): List of chat messages (history).
+        mcptools (list): List of MCP tool callables.
+        system_prompt (str): System prompt string for the LLM.
+
     Returns:
         list: Updated messages list.
+
+    - Handles user commands and chat messages.
+    - Prints model responses and updates message history.
     """
     if messages is None:
         messages = []
@@ -403,7 +421,7 @@ def chat(
                 {user_input}
                 """
 
-        print(f"\033[90m  Assistant ({get_timestamp()}):\033[0m")
+        print(f"\033[90m  {model} ({get_timestamp()}):\033[0m")
         tools = fn_adapter_mcp2ollama(mcptools)
         messages = stream_llm_with_tools(model=model, user_input=user_input, tools=tools, system_prompt=system_prompt, messages=messages, mcptools=mcptools)
         print()
