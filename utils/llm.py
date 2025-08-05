@@ -232,6 +232,7 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
             return tool.forward(**kwargs)
         wrapper.__name__ = getattr(tool, "name", tool.__class__.__name__)
         wrapper.__doc__ = getattr(tool, "description", "No description available.")
+        wrapper.__doc__ += f"\n\n{getattr(tool, "inputs", "Input information not available.")}----\n\n"
         return wrapper
     for tool in mcptools:
         adapted_tools.append(make_wrapper(tool))
@@ -254,3 +255,7 @@ def pull_model(model: str):
     """Pull a model from Ollama."""
     client = ollama.Client()
     return client.pull(model)
+
+def set_debug_from_main(debug_flag):
+    global ENABLE_DEBUG
+    ENABLE_DEBUG = debug_flag

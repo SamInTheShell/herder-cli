@@ -12,6 +12,9 @@ from mcp import StdioServerParameters
 from mcpadapt.core import MCPAdapt
 from mcpadapt.smolagents_adapter import SmolAgentsAdapter
 
+# Debug flag to control debug output
+ENABLE_DEBUG = False
+
 COMMAND_NAME="herder-cli"
 COMMAND_VERSION="v0.1"
 
@@ -25,7 +28,16 @@ def main():
     parser.add_argument('--mcp-config', type=str, default=None, help='Path to MCP config file (JSON)')
     parser.add_argument('--model', type=str, default="mistral-small3.2:24b", help='Model name for Ollama')
     parser.add_argument('--system-prompt', type=str, default="herder-instructions.md", help='Path to system prompt file (default: herder-instructions.md)')
+    parser.add_argument('--debug-mcp-servers', action='store_true', help='Enable MCP server debug output (do not suppress stderr)')
+    parser.add_argument('--debug-herder', action='store_true', help='Enable herder debug output')
     args = parser.parse_args()
+
+    global ENABLE_DEBUG
+    ENABLE_DEBUG = args.debug_herder
+
+    # Call set_debug_from_main to propagate ENABLE_DEBUG to llm.py
+    import utils.llm
+    utils.llm.set_debug_from_main(ENABLE_DEBUG)
 
     devnull = open(os.devnull, 'w')
     model = args.model
@@ -60,16 +72,14 @@ def main():
     # Connect to MCP server and get tools - suppress server logs
     # Use subprocess-level redirection to suppress MCP server output
     import subprocess
-    # Patch subprocess.Popen to redirect stderr to devnull for MCP servers
+    # Patch subprocess.Popen to redirect stderr to devnull for MCP servers only if debug is NOT enabled
     original_popen = subprocess.Popen
-    def patched_popen(*args, **kwargs):
-        # Only redirect stderr for our MCP server commands
-        if args and len(args[0]) > 0:
-            cmd = args[0] if isinstance(args[0], list) else [args[0]]
-            if any("assistant-mcp-server" in str(c) or "pubmedmcp" in str(c) for c in cmd):
-                kwargs['stderr'] = devnull
-        return original_popen(*args, **kwargs)
-    subprocess.Popen = patched_popen
+    if not args.debug_mcp_servers:
+        def patched_popen(*args, **kwargs):
+            # Redirect stderr to devnull for ALL subprocesses
+            kwargs['stderr'] = devnull
+            return original_popen(*args, **kwargs)
+        subprocess.Popen = patched_popen
 
 
     # Only load MCP servers from config if provided
@@ -187,11 +197,26 @@ def chat(
         if user_input.lower().startswith("/tools"):
             print()
             print("Tool Debug Info:")
+
             for tool in mcptools:
                 print()
+                if ENABLE_DEBUG:
+                    tool_type = type(tool)
+                    relevant_attrs = ['name', 'description', 'inputs', 'output_type']
+                    other_attrs = [a for a in dir(tool) if not a.startswith('__') and a not in relevant_attrs]
+                    print(f"\033[90m  DEBUG: Tool Info\033[0m")
+                    print(f"\033[90m    Type: {tool_type} (module: {tool_type.__module__})\033[0m")
+                    print(f"\033[90m    Bases: {[base.__name__ for base in tool_type.__bases__]}\033[0m")
+                    doc = getattr(tool_type, '__doc__', None)
+                    if doc:
+                        print(f"\033[90m    Type docstring: {doc.strip()}\033[0m")
+                    for attr in relevant_attrs:
+                        print(f"\033[90m    {attr}: {getattr(tool, attr, 'N/A')}\033[0m")
+                    print(f"\033[90m    Other attributes: {', '.join(other_attrs)}\033[0m")
+                    print()
                 print("name:        ", getattr(tool, "name", getattr(tool, "__name__", str(tool))))
                 print("description: ", getattr(tool, "description", getattr(tool, "__doc__", "No description available.")))
-            print()
+            print("")
             continue
 
         if user_input.lower().startswith("/mcptools"):
