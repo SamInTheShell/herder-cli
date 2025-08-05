@@ -148,7 +148,7 @@ def chat(
             break
 
         # /help should be first
-        if user_input.lower().startswith("/help"):
+        if user_input.lower().startswith("/help") or  user_input.startswith("/?"):
             print("\nAvailable commands:")
             print("  /help         Show this help message")
             print("  /model show   Show the current model")
@@ -304,8 +304,13 @@ def chat(
                 print()
                 continue
 
-        if user_input.lower().startswith("/exit") or user_input.lower().startswith("/exit"):
+        if user_input.lower().startswith("/exit") or user_input.lower().startswith("/quit"):
             break
+
+        if user_input.lower().startswith("/"):
+            print("Run /help or /? for command options.")
+            print()
+            continue
 
         if user_input.strip() == "":
             continue
