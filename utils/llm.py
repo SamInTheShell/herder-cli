@@ -226,3 +226,18 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
     if nativetools:
         adapted_tools.extend(nativetools)
     return adapted_tools
+
+def list_models():
+    """List available Ollama models."""
+    client = ollama.Client()
+    return client.list()
+
+def list_running_models():
+    """List running Ollama processes."""
+    client = ollama.Client()
+    return client.ps()
+
+def pull_model(model: str):
+    """Pull a model from Ollama."""
+    client = ollama.Client()
+    return client.pull(model)

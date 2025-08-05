@@ -1,5 +1,5 @@
 from utils.input import input_box
-from utils.llm import stream_llm_with_tools, fn_adapter_mcp2ollama
+from utils.llm import stream_llm_with_tools, fn_adapter_mcp2ollama, list_models, list_running_models, pull_model
 import datetime
 import json
 from pyfiglet import figlet_format
@@ -147,15 +147,36 @@ def chat(
         if user_input is None:
             break
 
+        # /help should be first
         if user_input.lower().startswith("/help"):
             print("\nAvailable commands:")
             print("  /help         Show this help message")
+            print("  /model show   Show the current model")
+            print("  /model set <model-name>   Set the model")
             print("  /history      Show chat history")
             print("  /tools        Show tool debug info")
             print("  /mcptools     Show raw MCP tools debug info")
             print("  /system set   Set the system prompt")
             print("  /system show  Show the current system prompt")
+            print("  /ollama list  List available Ollama models")
+            print("  /ollama ps    List running Ollama processes")
+            print("  /ollama pull <model>   Pull a model from Ollama")
             print("  /exit         Exit the chat loop")
+            print()
+            continue
+
+        # /model commands
+        if user_input.lower().startswith("/model"):
+            args = user_input.split(' ')
+            if len(args) > 2 and args[1].lower() == "set":
+                model = ' '.join(args[2:])
+                print(f"  Model set to: {model}")
+            elif len(args) > 1 and args[1].lower() == "show":
+                print(f"Current model: {model}")
+            else:
+                print("  Options:")
+                print("        /model set <model-name>")
+                print("        /model show")
             print()
             continue
 
@@ -170,6 +191,7 @@ def chat(
                 print()
                 print("name:        ", getattr(tool, "name", getattr(tool, "__name__", str(tool))))
                 print("description: ", getattr(tool, "description", getattr(tool, "__doc__", "No description available.")))
+            print()
             continue
 
         if user_input.lower().startswith("/mcptools"):
@@ -203,6 +225,84 @@ def chat(
 
             print()
             continue
+
+        # /ollama commands
+        if user_input.lower().startswith("/ollama"):
+            args = user_input.split()
+            def safe_dict(obj):
+                # Recursively convert objects to dicts and handle datetime
+                if hasattr(obj, "__dict__"):
+                    d = {}
+                    for k, v in obj.__dict__.items():
+                        if hasattr(v, "isoformat"):  # datetime
+                            d[k] = v.isoformat()
+                        elif hasattr(v, "__dict__"):  # nested object
+                            d[k] = safe_dict(v)
+                        elif isinstance(v, list):
+                            d[k] = [safe_dict(i) for i in v]
+                        elif callable(v):
+                            continue
+                        else:
+                            d[k] = v
+                    return d
+                elif isinstance(obj, list):
+                    return [safe_dict(i) for i in obj]
+                else:
+                    return obj
+            if len(args) > 1 and args[1].lower() == "raw-list":
+                print("\nOllama Raw Models Response:")
+                models_response = list_models()
+                print(json.dumps(safe_dict(models_response), indent=2, ensure_ascii=False))
+                print()
+                continue
+            elif len(args) > 1 and args[1].lower() == "raw-ps":
+                print("\nOllama Raw Processes Response:")
+                processes_response = list_running_models()
+                print(json.dumps(safe_dict(processes_response), indent=2, ensure_ascii=False))
+                print()
+                continue
+            elif len(args) > 2 and args[1].lower() == "pull":
+                model_name = ' '.join(args[2:])
+                print(f"\nPulling Ollama model: {model_name}")
+                try:
+                    result_response = pull_model(model_name)
+                    # Use model_dump if available, else safe_dict
+                    if hasattr(result_response, "model_dump"):
+                        result = result_response.model_dump()
+                    else:
+                        result = getattr(result_response, "dict", result_response)
+                        def safe_dict(obj):
+                            if hasattr(obj, "__dict__"):
+                                d = {}
+                                for k, v in obj.__dict__.items():
+                                    if hasattr(v, "isoformat"):
+                                        d[k] = v.isoformat()
+                                    elif hasattr(v, "__dict__"):
+                                        d[k] = safe_dict(v)
+                                    elif isinstance(v, list):
+                                        d[k] = [safe_dict(i) for i in v]
+                                    elif callable(v):
+                                        continue
+                                    else:
+                                        d[k] = v
+                                return d
+                            elif isinstance(obj, list):
+                                return [safe_dict(i) for i in obj]
+                            else:
+                                return obj
+                        result = safe_dict(result)
+                    print(json.dumps(result, indent=2, ensure_ascii=False))
+                except Exception as e:
+                    print(json.dumps({"error": str(e)}, indent=2, ensure_ascii=False))
+                print()
+                continue
+            else:
+                print("  Options:")
+                print("        /ollama raw-list")
+                print("        /ollama raw-ps")
+                print("        /ollama pull <model>")
+                print()
+                continue
 
         if user_input.lower().startswith("/exit") or user_input.lower().startswith("/exit"):
             break
