@@ -114,6 +114,7 @@ def run_main_logic(args, model, messages, system_prompt, mcptools):
         if args.history_file:
             with open(args.history_file, 'w') as f:
                 json.dump(messages, f, indent=2, ensure_ascii=False)
+        print()
         return
 
     messages = chat(model=model, messages=messages, system_prompt=system_prompt, mcptools=mcptools)

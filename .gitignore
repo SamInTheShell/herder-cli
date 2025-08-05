@@ -16,3 +16,5 @@ wheels/
 
 # macOS resource forks
 ._*
+
+history.log
