@@ -1,6 +1,8 @@
 # Herder
 A terminal chat utility for Ollama providing MCP support.
 
+You need [Ollama](https://ollama.com/) installed for this utility.
+
 ![Screenshot](screenshot.png)
 
 This also supports running without an input prompt, which makes scheduling a task easy with [crons](https://en.wikipedia.org/wiki/Cron).
