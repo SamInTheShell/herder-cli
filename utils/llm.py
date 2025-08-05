@@ -151,50 +151,45 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
     adapted_tools = []
     def make_wrapper(tool):
         input_keys = getattr(tool, "inputs", None)
+        param_names = list(input_keys.keys()) if input_keys and isinstance(input_keys, dict) else []
         def wrapper(**kwargs):
             # Handle case where LLM passes kwargs as a parameter
             if len(kwargs) == 1 and "kwargs" in kwargs:
                 inner_kwargs = kwargs["kwargs"]
-                # If inner_kwargs is a string, it means LLM passed a positional argument
-                # We need to map this to the expected parameter name
-                if isinstance(inner_kwargs, str) and input_keys and isinstance(input_keys, dict):
-                    if len(input_keys) == 1:
-                        # Single parameter tool - check if it's a request wrapper
-                        expected_key = list(input_keys.keys())[0]
-                        if expected_key == "request":
-                            # This is a request wrapper - need to check what goes inside
-                            request_schema = input_keys["request"]
-                            if isinstance(request_schema, dict) and "properties" in request_schema:
-                                # Find the main parameter (usually 'term' for search)
-                                props = request_schema["properties"]
-                                if "term" in props:
-                                    kwargs = {"request": {"term": inner_kwargs}}
-                                elif "query" in props:
-                                    kwargs = {"request": {"query": inner_kwargs}}
-                                else:
-                                    # Use the first required property
-                                    required = request_schema.get("required", [])
-                                    if required:
-                                        kwargs = {"request": {required[0]: inner_kwargs}}
-                                    else:
-                                        kwargs = {"request": {list(props.keys())[0]: inner_kwargs}}
-                            else:
-                                kwargs = {expected_key: inner_kwargs}
-                        else:
-                            kwargs = {expected_key: inner_kwargs}
+                # If inner_kwargs is a string and tool expects multiple args, split and map
+                if isinstance(inner_kwargs, str) and param_names:
+                    # Try to parse key=value pairs from the string
+                    if '=' in inner_kwargs:
+                        # Split by comma, then by '='
+                        pairs = [v.strip() for v in inner_kwargs.split(',')]
+                        parsed = {}
+                        for pair in pairs:
+                            if '=' in pair:
+                                k, v = pair.split('=', 1)
+                                parsed[k.strip()] = v.strip()
+                        kwargs = parsed
                     else:
-                        # Multi-parameter tool - assume it's the first/main parameter
-                        # For search_abstracts, this would typically be 'query' or 'term'
-                        main_keys = ['query', 'term', 'search', 'q']  # Common search parameter names
-                        for key in main_keys:
-                            if key in input_keys:
-                                kwargs = {key: inner_kwargs}
-                                break
+                        values = [v.strip() for v in inner_kwargs.split(",")]
+                        if len(values) == len(param_names):
+                            try:
+                                mapped = {k: int(v) if input_keys[k].get('type') == 'integer' else v for k, v in zip(param_names, values)}
+                            except Exception:
+                                mapped = {k: v for k, v in zip(param_names, values)}
+                            kwargs = mapped
                         else:
-                            # Fallback to first key if no common ones found
-                            kwargs = {list(input_keys.keys())[0]: inner_kwargs}
+                            # Fallback: treat as single param
+                            if len(param_names) == 1:
+                                kwargs = {param_names[0]: inner_kwargs}
+                            else:
+                                kwargs = {param_names[0]: inner_kwargs}
+                elif isinstance(inner_kwargs, dict):
+                    kwargs = inner_kwargs
                 else:
-                    kwargs = inner_kwargs if isinstance(inner_kwargs, dict) else {}
+                    # Fallback: treat as single param
+                    if param_names:
+                        kwargs = {param_names[0]: inner_kwargs}
+                    else:
+                        kwargs = {}
 
             # If tool expects no inputs (like get_timestamp), ignore any kwargs
             if not input_keys or (isinstance(input_keys, dict) and len(input_keys) == 0):
@@ -203,7 +198,7 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
             # If tool expects a single input, map any kwargs to the expected structure
             if input_keys and isinstance(input_keys, dict):
                 if len(input_keys) == 1:
-                    expected_key = list(input_keys.keys())[0]
+                    expected_key = param_names[0]
                     # If we get a single kwarg that's not the expected key, map it
                     if len(kwargs) == 1:
                         actual_key = list(kwargs.keys())[0]
@@ -211,14 +206,10 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
                             kwargs = {expected_key: kwargs[actual_key]}
 
                 # For multi-parameter tools, check if we need to wrap in a 'request' object
-                # This handles cases like search_abstracts that expect {request: {term: "..."}}
                 if kwargs and "request" not in kwargs:
-                    # Check if the tool input schema mentions 'request'
                     input_schema_str = str(input_keys)
                     if "request" in input_schema_str.lower():
-                        # For search_abstracts, we need to wrap in request object with 'term' key
                         if 'term' in input_schema_str.lower():
-                            # Convert single value to {request: {term: value}}
                             if len(kwargs) == 1:
                                 value = list(kwargs.values())[0]
                                 return tool.forward({"request": {"term": value}})
@@ -232,7 +223,23 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
             return tool.forward(**kwargs)
         wrapper.__name__ = getattr(tool, "name", tool.__class__.__name__)
         wrapper.__doc__ = getattr(tool, "description", "No description available.")
-        wrapper.__doc__ += f"\n\n{getattr(tool, "inputs", "Input information not available.")}----\n\n"
+        # Improved docstring: enumerate each parameter
+        param_lines = []
+        param_lines.append("\nGenerated Arg Info:")
+        if input_keys and isinstance(input_keys, dict) and len(input_keys) > 0:
+            for k, v in input_keys.items():
+                param_type = v.get('type', 'unknown') if isinstance(v, dict) else str(type(v))
+                param_desc = v.get('description', '') if isinstance(v, dict) else str(v)
+                param_lines.append(f"  {k} ({param_type}): {param_desc}")
+        else:
+            param_lines.append("\n  None")
+        wrapper.__doc__ += "\n" + "\n".join(param_lines) + "\n----\n\n"
+        ## DO NOT REMOVE.
+        ## This is useful for debugging what the LLM recieves documentation-wise.
+        # print("--------")
+        # print(wrapper.__doc__)
+        # print("--------")
+
         return wrapper
     for tool in mcptools:
         adapted_tools.append(make_wrapper(tool))
