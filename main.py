@@ -329,6 +329,52 @@ def chat(
                 print()
                 continue
 
+        if user_input.lower().startswith("/call"):
+            args = user_input.split(maxsplit=2)
+            if len(args) < 2:
+                print("Usage: /call toolname param1=value1 param2=value2 ... OR /call toolname {\"param1\":value1, ...}")
+                print()
+                continue
+            toolname = args[1]
+            params = {}
+            # Support: /call toolname {json}
+            if len(args) > 2 and args[2].strip().startswith('{') and args[2].strip().endswith('}'):
+                try:
+                    params = json.loads(args[2].strip())
+                except Exception as e:
+                    print(f"Error parsing JSON for tool params: {e}")
+                    continue
+            else:
+                # Support: /call toolname param1=value1 param2=value2 ...
+                for arg in args[2:] if len(args) > 2 else []:
+                    for pair in arg.split():
+                        if '=' in pair:
+                            k, v = pair.split('=', 1)
+                            v = v.strip()
+                            if (v.startswith('{') and v.endswith('}')) or (v.startswith('[') and v.endswith(']')):
+                                try:
+                                    v = json.loads(v)
+                                except Exception as e:
+                                    print(f"Error parsing JSON for {k}: {e}")
+                                    continue
+                            params[k] = v
+            tool = next((t for t in mcptools if getattr(t, "name", getattr(t, "__name__", str(t))) == toolname), None)
+            if not tool:
+                print(f"Tool '{toolname}' not found.")
+                print()
+                continue
+            args_str = ', '.join(f"{k}={json.dumps(v) if isinstance(v, (dict, list)) else v}" for k, v in params.items())
+            print(f"\n  \033[90mtool call:\033[0m {toolname}({args_str})")
+            try:
+                result = tool(**params)
+                print(f"  \033[90mtool results:\033[90m \033[0m")
+                print(f"{json.dumps(result, indent=2, ensure_ascii=False) if isinstance(result, (dict, list)) else result}")
+                print(f"  \033[90m/end of tool results\033[90m \033[0m\n")
+            except Exception as e:
+                print(f"Error calling tool '{toolname}': {e}")
+            print()
+            continue
+
         if user_input.lower().startswith("/exit") or user_input.lower().startswith("/quit"):
             break
 
