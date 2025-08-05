@@ -1,5 +1,6 @@
 import ollama
 from typing import List, Callable, Optional, Iterator
+import json
 
 # Debug flag to control debug output
 ENABLE_DEBUG = False
@@ -141,6 +142,137 @@ def stream_llm_with_tools(model: str, user_input: str, tools: Optional[List[Call
 
     return messages
 
+# This function is just ass... needs work.
+def parse_tool_arguments(inner_kwargs, param_names, input_keys):
+    """
+    Parse various formats of tool arguments into a proper kwargs dict.
+
+    Args:
+        inner_kwargs: The raw arguments from the LLM (string, dict, etc.)
+        param_names: List of expected parameter names
+        input_keys: Dict of parameter schemas from the tool
+
+    Returns:
+        dict: Parsed arguments ready for the tool
+    """
+    if ENABLE_DEBUG:
+        print(f"  \033[90mDEBUG: parse_tool_arguments input: {inner_kwargs} (type: {type(inner_kwargs)})\033[0m")
+        print(f"  \033[90mDEBUG: param_names: {param_names}\033[0m")
+
+    # If it's already a dict, return it
+    if isinstance(inner_kwargs, dict):
+        if ENABLE_DEBUG:
+            print(f"  \033[90mDEBUG: Processing dict input: {inner_kwargs}\033[0m")
+        return inner_kwargs
+
+    # If it's not a string, treat as single param
+    if not isinstance(inner_kwargs, str):
+        if ENABLE_DEBUG:
+            print(f"  \033[90mDEBUG: Fallback to single param for non-dict/string: {inner_kwargs}\033[0m")
+        if param_names:
+            return {param_names[0]: inner_kwargs}
+        else:
+            return {}
+
+    # String processing
+    if not param_names:
+        if ENABLE_DEBUG:
+            print(f"  \033[90mDEBUG: No param_names, returning string as-is\033[0m")
+        return {"value": inner_kwargs}
+
+    # Try to parse as JSON if it looks like a dict (do this BEFORE key=value parsing)
+    if (inner_kwargs.strip().startswith('{') and inner_kwargs.strip().endswith('}')):
+        try:
+            parsed = json.loads(inner_kwargs)
+            if ENABLE_DEBUG:
+                print(f"  \033[90mDEBUG: Parsed JSON string to dict: {parsed}\033[0m")
+            return parsed
+        except Exception as e:
+            if ENABLE_DEBUG:
+                print(f"  \033[90mDEBUG: Failed to parse JSON string: {e}\033[0m")
+            # Try converting single quotes to double quotes for Python dict format
+            try:
+                fixed_json = inner_kwargs.replace("'", '"')
+                parsed = json.loads(fixed_json)
+                if ENABLE_DEBUG:
+                    print(f"  \033[90mDEBUG: Parsed Python dict string to dict: {parsed}\033[0m")
+                return parsed
+            except Exception as e2:
+                if ENABLE_DEBUG:
+                    print(f"  \033[90mDEBUG: Failed to parse Python dict string: {e2}\033[0m")
+                # Last resort: try using ast.literal_eval for Python dict strings
+                try:
+                    import ast
+                    parsed = ast.literal_eval(inner_kwargs)
+                    if isinstance(parsed, dict):
+                        if ENABLE_DEBUG:
+                            print(f"  \033[90mDEBUG: Parsed using ast.literal_eval: {parsed}\033[0m")
+                        return parsed
+                except Exception as e3:
+                    if ENABLE_DEBUG:
+                        print(f"  \033[90mDEBUG: Failed to parse with ast.literal_eval: {e3}\033[0m")
+
+    # Try to parse key=value pairs from the string
+    if '=' in inner_kwargs:
+        if ENABLE_DEBUG:
+            print(f"  \033[90mDEBUG: Detected key=value pairs in string: {inner_kwargs}\033[0m")
+
+        # First try comma-separated pairs
+        pairs = [v.strip() for v in inner_kwargs.split(',')]
+        parsed = {}
+
+        # If comma splitting doesn't work well, try space splitting
+        if len(pairs) == 1 and ' ' in inner_kwargs:
+            # Try to split by spaces while preserving key=value pairs
+            import re
+            # Match pattern like "key=value" including quoted values
+            matches = re.findall(r'(\w+)=([^\s=]+)', inner_kwargs)
+            if matches:
+                parsed = {k: v for k, v in matches}
+                if ENABLE_DEBUG:
+                    print(f"  \033[90mDEBUG: Parsed space-separated key-value pairs: {parsed}\033[0m")
+                return parsed
+
+        # Fall back to comma-separated parsing
+        for pair in pairs:
+            if '=' in pair:
+                k, v = pair.split('=', 1)
+                parsed[k.strip()] = v.strip()
+
+        if ENABLE_DEBUG:
+            print(f"  \033[90mDEBUG: Parsed key-value pairs: {parsed}\033[0m")
+        return parsed
+
+    # Try splitting by comma first
+    values = [v.strip() for v in inner_kwargs.split(",") if v.strip()]
+    if ENABLE_DEBUG:
+        print(f"  \033[90mDEBUG: Positional values after comma split: {values}\033[0m")
+
+    # If not enough values, try splitting by space
+    if len(values) != len(param_names):
+        values = [v.strip() for v in inner_kwargs.split() if v.strip()]
+        if ENABLE_DEBUG:
+            print(f"  \033[90mDEBUG: Positional values after space split: {values}\033[0m")
+
+    # If the number of values matches the number of param_names, map them
+    if len(values) == len(param_names):
+        try:
+            mapped = {k: int(v) if input_keys and input_keys.get(k, {}).get('type') == 'integer' else v
+                     for k, v in zip(param_names, values)}
+        except Exception:
+            mapped = {k: v for k, v in zip(param_names, values)}
+        if ENABLE_DEBUG:
+            print(f"  \033[90mDEBUG: Mapped positional args: {mapped}\033[0m")
+        return mapped
+
+    # Fallback: treat as single param
+    if ENABLE_DEBUG:
+        print(f"  \033[90mDEBUG: Fallback to single param for string: {inner_kwargs}\033[0m")
+    if len(param_names) == 1:
+        return {param_names[0]: inner_kwargs}
+    else:
+        return {param_names[0]: inner_kwargs}
+
 
 def fn_adapter_mcp2ollama(mcptools, nativetools=None):
     """
@@ -156,40 +288,11 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
             # Handle case where LLM passes kwargs as a parameter
             if len(kwargs) == 1 and "kwargs" in kwargs:
                 inner_kwargs = kwargs["kwargs"]
-                # If inner_kwargs is a string and tool expects multiple args, split and map
-                if isinstance(inner_kwargs, str) and param_names:
-                    # Try to parse key=value pairs from the string
-                    if '=' in inner_kwargs:
-                        # Split by comma, then by '='
-                        pairs = [v.strip() for v in inner_kwargs.split(',')]
-                        parsed = {}
-                        for pair in pairs:
-                            if '=' in pair:
-                                k, v = pair.split('=', 1)
-                                parsed[k.strip()] = v.strip()
-                        kwargs = parsed
-                    else:
-                        values = [v.strip() for v in inner_kwargs.split(",")]
-                        if len(values) == len(param_names):
-                            try:
-                                mapped = {k: int(v) if input_keys[k].get('type') == 'integer' else v for k, v in zip(param_names, values)}
-                            except Exception:
-                                mapped = {k: v for k, v in zip(param_names, values)}
-                            kwargs = mapped
-                        else:
-                            # Fallback: treat as single param
-                            if len(param_names) == 1:
-                                kwargs = {param_names[0]: inner_kwargs}
-                            else:
-                                kwargs = {param_names[0]: inner_kwargs}
-                elif isinstance(inner_kwargs, dict):
-                    kwargs = inner_kwargs
-                else:
-                    # Fallback: treat as single param
-                    if param_names:
-                        kwargs = {param_names[0]: inner_kwargs}
-                    else:
-                        kwargs = {}
+                if ENABLE_DEBUG:
+                    print(f"  \033[90mDEBUG: Received kwargs wrapper: {inner_kwargs} (type: {type(inner_kwargs)})\033[0m")
+
+                # Use the dedicated parsing function
+                kwargs = parse_tool_arguments(inner_kwargs, param_names, input_keys)
 
             # If tool expects no inputs (like get_timestamp), ignore any kwargs
             if not input_keys or (isinstance(input_keys, dict) and len(input_keys) == 0):
@@ -225,7 +328,7 @@ def fn_adapter_mcp2ollama(mcptools, nativetools=None):
         wrapper.__doc__ = getattr(tool, "description", "No description available.")
         # Improved docstring: enumerate each parameter
         param_lines = []
-        param_lines.append("\nGenerated Arg Info:")
+        param_lines.append("\nGenerated Arg Info:)")
         if input_keys and isinstance(input_keys, dict) and len(input_keys) > 0:
             for k, v in input_keys.items():
                 param_type = v.get('type', 'unknown') if isinstance(v, dict) else str(type(v))

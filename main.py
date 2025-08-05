@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--mcp-config', type=str, default=None, help='Path to MCP config file (JSON)')
     parser.add_argument('--model', type=str, default="mistral-small3.2:24b", help='Model name for Ollama')
     parser.add_argument('--system-prompt', type=str, default="herder-instructions.md", help='Path to system prompt file (default: herder-instructions.md)')
+    parser.add_argument('--system-prompt-message', type=str, default=None, help='System prompt as a string (takes precedence over --system-prompt)')
     parser.add_argument('--debug-mcp-servers', action='store_true', help='Enable MCP server debug output (do not suppress stderr)')
     parser.add_argument('--debug-herder', action='store_true', help='Enable herder debug output')
     args = parser.parse_args()
@@ -52,7 +53,9 @@ def main():
     tools=[]
     # System prompt file logic
     system_prompt_path = args.system_prompt
-    if os.path.exists(system_prompt_path):
+    if args.system_prompt_message is not None:
+        system_prompt = args.system_prompt_message
+    elif os.path.exists(system_prompt_path):
         with open(system_prompt_path, 'r') as f:
             system_prompt = f.read()
     else:
