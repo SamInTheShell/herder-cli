@@ -1,9 +1,10 @@
 [project]
-name = "open-coder-cli"
+name = "herder-cli"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
+cli = "herder_cli.__main__:main"
 dependencies = [
     "mcp>=1.12.3",
     "mcpadapt>=0.1.12",
