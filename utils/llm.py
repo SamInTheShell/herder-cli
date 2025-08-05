@@ -44,94 +44,106 @@ def stream_llm_with_tools(model: str, user_input: str, tools: Optional[List[Call
 
     # Stream responses from the LLM
     client = ollama.Client()
-    response: Iterator[ollama.ChatResponse] = client.chat(
-        model=model,
-        stream=True,
-        messages=messages,
-        tools=tools,
-        think=enable_thinking
-    )
 
     assistant_content = ""
 
     try:
-        for chunk in response:
-            if enable_thinking and chunk.message.thinking:
-                print(chunk.message.thinking, end='', flush=True)
-            if chunk.message.content:
-                print(chunk.message.content, end='', flush=True)
-                assistant_content += chunk.message.content
-            if chunk.message.tool_calls:
-                # Add any accumulated assistant content before tool calls
-                if assistant_content:
-                    messages.append({"role": "assistant", "content": assistant_content})
-                    assistant_content = ""
+        # Loop to allow for sequential tool calls
+        while True:
+            response: Iterator[ollama.ChatResponse] = client.chat(
+                model=model,
+                stream=True,
+                messages=messages,
+                tools=tools,
+                think=enable_thinking
+            )
 
-                # Add assistant message with tool calls
-                messages.append({
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": [{"function": {"name": tc.function.name, "arguments": tc.function.arguments}} for tc in chunk.message.tool_calls]
-                })
+            has_tool_calls = False
 
-                for tool_call in chunk.message.tool_calls:
-                    tool_name = tool_call.function.name
-                    tool_args = tool_call.function.arguments
+            for chunk in response:
+                if enable_thinking and chunk.message.thinking:
+                    print(chunk.message.thinking, end='', flush=True)
+                if chunk.message.content:
+                    print(chunk.message.content, end='', flush=True)
+                    assistant_content += chunk.message.content
+                if chunk.message.tool_calls:
+                    has_tool_calls = True
+                    # Add any accumulated assistant content before tool calls
+                    if assistant_content:
+                        messages.append({"role": "assistant", "content": assistant_content})
+                        assistant_content = ""
 
-                    # Print tool call
-                    if tool_args:
-                        if len(tool_args) == 1 and "kwargs" in tool_args:
-                            # Handle wrapped kwargs
-                            inner_args = tool_args["kwargs"]
-                            if inner_args and isinstance(inner_args, dict):
-                                args_str = ', '.join(f"{k}={v}" for k, v in inner_args.items())
+                    # Add assistant message with tool calls
+                    messages.append({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [{"function": {"name": tc.function.name, "arguments": tc.function.arguments}} for tc in chunk.message.tool_calls]
+                    })
+
+                    for tool_call in chunk.message.tool_calls:
+                        tool_name = tool_call.function.name
+                        tool_args = tool_call.function.arguments
+
+                        # Print tool call
+                        if tool_args:
+                            if len(tool_args) == 1 and "kwargs" in tool_args:
+                                # Handle wrapped kwargs
+                                inner_args = tool_args["kwargs"]
+                                if inner_args and isinstance(inner_args, dict):
+                                    args_str = ', '.join(f"{k}={v}" for k, v in inner_args.items())
+                                else:
+                                    args_str = str(inner_args) if inner_args else ""
                             else:
-                                args_str = str(inner_args) if inner_args else ""
+                                args_str = ', '.join(f"{k}={v}" for k, v in tool_args.items())
                         else:
-                            args_str = ', '.join(f"{k}={v}" for k, v in tool_args.items())
-                    else:
-                        args_str = ""
-                    print(f"\n  \033[90mtool call:\033[0m {tool_name}({args_str})")
+                            args_str = ""
+                        print(f"\n  \033[90mtool call:\033[0m {tool_name}({args_str})")
 
-                    # Find and execute the tool
-                    for tool in tools:
-                        if tool.__name__ == tool_name:
-                            # Debug: print what we're actually passing to the tool
-                            if ENABLE_DEBUG:
-                                print(f"  \033[90mDEBUG: tool_args type={type(tool_args)}, content={tool_args}\033[0m")
+                        # Find and execute the tool
+                        tool_found = False
+                        for tool in tools:
+                            if tool.__name__ == tool_name:
+                                tool_found = True
+                                # Debug: print what we're actually passing to the tool
+                                if ENABLE_DEBUG:
+                                    print(f"  \033[90mDEBUG: tool_args type={type(tool_args)}, content={tool_args}\033[0m")
 
-                            # Debug: print the tool's input schema for problematic tools
-                            if ENABLE_DEBUG and tool_name == "search_abstracts":
-                                original_tool = None
-                                for orig_tool in mcptools:
-                                    if getattr(orig_tool, "name", None) == tool_name:
-                                        original_tool = orig_tool
-                                        break
-                                if original_tool:
-                                    print(f"  \033[90mDEBUG: {tool_name} input schema: {getattr(original_tool, 'inputs', 'N/A')}\033[0m")
+                                # Debug: print the tool's input schema for problematic tools
+                                if ENABLE_DEBUG and tool_name == "search_abstracts":
+                                    original_tool = None
+                                    for orig_tool in mcptools:
+                                        if getattr(orig_tool, "name", None) == tool_name:
+                                            original_tool = orig_tool
+                                            break
+                                    if original_tool:
+                                        print(f"  \033[90mDEBUG: {tool_name} input schema: {getattr(original_tool, 'inputs', 'N/A')}\033[0m")
 
-                            tool_result = tool(**tool_args)
+                                try:
+                                    tool_result = tool(**tool_args)
 
-                            # Print tool results
-                            print(f"  \033[90mtool results:\033[90m \033[0m")
-                            print(f"{tool_result}")
-                            print(f"  \033[90m/end of tool results\033[90m \033[0m\n")
+                                    # Print tool results
+                                    print(f"  \033[90mtool results:\033[90m \033[0m")
+                                    print(f"{tool_result}")
+                                    print(f"  \033[90m/end of tool results\033[90m \033[0m\n")
 
-                            # Add tool result to messages
-                            messages.append({"role": "tool", "content": str(tool_result), "name": tool_name})
+                                    # Add tool result to messages
+                                    messages.append({"role": "tool", "content": str(tool_result), "name": tool_name})
+                                except Exception as e:
+                                    error_msg = f"Error executing tool '{tool_name}': {str(e)}"
+                                    print(f"  \033[91mtool error: {error_msg}\033[0m\n")
+                                    messages.append({"role": "tool", "content": error_msg, "name": tool_name})
+                                break
 
-                # Continue streaming LLM responses after tool calls
-                remaining_response = client.chat(
-                    model=model,
-                    stream=True,
-                    messages=messages,
-                    tools=tools,
-                    think=enable_thinking
-                )
-                for remaining_chunk in remaining_response:
-                    if remaining_chunk.message.content:
-                        print(remaining_chunk.message.content, end='', flush=True)
-                        assistant_content += remaining_chunk.message.content
+                        # Handle case where tool was not found
+                        if not tool_found:
+                            error_msg = f"Tool '{tool_name}' not found. Available tools: {[t.__name__ for t in tools]}"
+                            print(f"  \033[91mtool error: {error_msg}\033[0m\n")
+                            messages.append({"role": "tool", "content": error_msg, "name": tool_name})
+
+            # Only continue the loop if there were tool calls that need follow-up
+            if not has_tool_calls:
+                break
+
     except KeyboardInterrupt:
         print("\n  \033[90m[Response Generation Cancelled]\033[0m")
         # Optionally, flush or clean up here
