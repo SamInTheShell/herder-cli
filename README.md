@@ -6,28 +6,30 @@ You need [Ollama](https://ollama.com/) installed for this utility.
 ![Screenshot](screenshot.png)
 
 This also supports running without an input prompt, which makes scheduling a task easy with [crons](https://en.wikipedia.org/wiki/Cron).
-```shell
-# uv run main.py --prompt 'What is my name.' --history-file history.log --no-banner
-  User (2025-08-04T21:24:11.752604):
+```console
+# uvx herder-cli@latest --prompt 'What is my name.' --history-file history.log --no-banner
+Installed 51 packages in 37ms
+  User (2025-08-05T19:38:46.143672):
 What is my name.
 
-  Assistant (2025-08-04T21:24:11.752625):
-I'm sorry, but I don't have access to personal information about users, including names. Is there something else I can help you with?
+  mistral-small3.2:24b (2025-08-05T19:38:46.143695):
+I'm sorry, but I don't have access to personal information about users, including names. How else can I assist you today?
 
-# uv run main.py --prompt 'We are doing a memory test. The name is Sam.' --history-file history.log --no-banner
-  User (2025-08-04T21:24:18.671558):
+# uvx herder-cli@latest --prompt 'We are doing a memory test. The name is Sam.' --history-file history.log --no-banner
+Installed 51 packages in 38ms
+  User (2025-08-05T19:39:08.818119):
 We are doing a memory test. The name is Sam.
 
-  Assistant (2025-08-04T21:24:18.671572):
-Thank you for letting me know! If you have any other questions or need assistance with anything else, feel free to ask.
+  mistral-small3.2:24b (2025-08-05T19:39:08.818135):
+Thank you for letting me know, Sam! It's great to meet you. How else can I assist you today?
 
-# uv run main.py --prompt 'What was my name?' --history-file history.log --no-banner
-  User (2025-08-04T21:24:24.214079):
+# uvx herder-cli@latest --prompt 'What was my name?' --history-file history.log --no-banner
+Installed 51 packages in 38ms
+  User (2025-08-05T19:39:21.104007):
 What was my name?
 
-  Assistant (2025-08-04T21:24:24.214095):
-Your name is Sam.
-
+  mistral-small3.2:24b (2025-08-05T19:39:21.104028):
+In our previous interaction, you mentioned that your name is Sam. Is there anything else I can help you with?
 ```
 
 ## Working Features
