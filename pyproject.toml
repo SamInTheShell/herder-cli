@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-cli = "herder_cli.__main__:main"
 dependencies = [
     "mcp>=1.12.3",
     "mcpadapt>=0.1.12",
@@ -13,3 +12,19 @@ dependencies = [
     "pyfiglet>=1.0.3",
     "smolagents>=1.20.0",
 ]
+
+[project.scripts]
+cli = "herder.main:main"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[[tool.uv.index]]
+name = "herder-cli"
+url = "https://pypi.org/simple/"
+publish-url = "https://pypi.org/legacy/"
+explicit = true
