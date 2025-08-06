@@ -3,6 +3,8 @@ A terminal chat utility for Ollama providing MCP support.
 
 You need [Ollama](https://ollama.com/) installed for this utility.
 
+Using `uvx` you can run `herder` with just `uvx herder-cli@latest`.
+
 ![Screenshot](screenshot.png)
 
 This also supports running without an input prompt, which makes scheduling a task easy with [crons](https://en.wikipedia.org/wiki/Cron).
