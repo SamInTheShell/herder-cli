@@ -1,6 +1,6 @@
 [project]
 name = "herder-cli"
-version = "0.1.1"
+version = "0.1.4"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -28,3 +28,7 @@ name = "herder-cli"
 url = "https://pypi.org/simple/"
 publish-url = "https://pypi.org/legacy/"
 explicit = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["herder*"]

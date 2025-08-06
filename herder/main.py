@@ -1,5 +1,5 @@
-from utils.input import input_box
-from utils.llm import stream_llm_with_tools, fn_adapter_mcp2ollama, list_models, list_running_models, pull_model
+from herder.utils.input import input_box
+from herder.utils.llm import stream_llm_with_tools, fn_adapter_mcp2ollama, list_models, list_running_models, pull_model
 import datetime
 import json
 from pyfiglet import figlet_format
@@ -37,8 +37,8 @@ def main():
     ENABLE_DEBUG = args.debug_herder
 
     # Call set_debug_from_main to propagate ENABLE_DEBUG to llm.py
-    import utils.llm
-    utils.llm.set_debug_from_main(ENABLE_DEBUG)
+    import herder.utils.llm
+    herder.utils.llm.set_debug_from_main(ENABLE_DEBUG)
 
     devnull = open(os.devnull, 'w')
     model = args.model
